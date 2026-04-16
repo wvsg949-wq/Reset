@@ -8,9 +8,8 @@ import base64
 import secrets
 try:
     import requests
-    from cfonts import render
 except ImportError:
-    os.system("pip install requests cfonts")
+    os.system("pip install requests")
 
 import time
 import string
@@ -39,22 +38,6 @@ def send_telegram(chat_id, text, parse_mode="HTML"):
         "chat_id": chat_id,
         "text": text,
         "parse_mode": parse_mode
-    }
-    try:
-        r = requests.post(url, data=payload, timeout=10)
-        return r.json()
-    except Exception as e:
-        print(f"[-] Telegram send error: {e}")
-        return None
-
-def send_telegram_keyboard(chat_id, text, buttons):
-    """Send message with inline keyboard buttons"""
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "HTML",
-        "reply_markup": json.dumps({"inline_keyboard": buttons})
     }
     try:
         r = requests.post(url, data=payload, timeout=10)
@@ -95,19 +78,29 @@ def id_user(user_id):
         try:
             username = r.json()["user"]["username"]
             return username
-        except:
+        except Exception as e:
+            print(f"[!] Failed to get username: {e}")
             return "Unknown"
-    except:
+    except Exception as e:
+        print(f"[!] Exception getting user: {e}")
         return "Unknown"
 
 def reset_instagram_password(reset_link):
     """Reset Instagram password using reset link"""
     try:
+        print(f"[*] Starting password reset process...")
+        
         ANDROID_ID, USER_AGENT, WATERFALL_ID, PASSWORD = generate_device_info()
+        print(f"[+] Generated device info")
         
         # Extract uidb36 and token from reset link
-        uidb36 = reset_link.split("uidb36=")[1].split("&token=")[0]
-        token = reset_link.split("&token=")[1].split(":")[0]
+        try:
+            uidb36 = reset_link.split("uidb36=")[1].split("&")[0]
+            token = reset_link.split("token=")[1].split("&")[0]
+            print(f"[+] Extracted credentials: uidb36={uidb36[:10]}..., token={token[:10]}...")
+        except IndexError as e:
+            print(f"[-] Failed to extract credentials: {e}")
+            return {"success": False, "error": "Could not extract uidb36 or token from reset link"}
 
         url = "https://i.instagram.com/api/v1/accounts/password_reset/"
         data = {
@@ -118,18 +111,40 @@ def reset_instagram_password(reset_link):
             "waterfall_id": WATERFALL_ID
         }
         
+        print(f"[*] Sending password reset request to Instagram...")
         r = requests.post(url, headers=make_headers(user_agent=USER_AGENT), data=data, timeout=10)
         
+        print(f"[+] Response status: {r.status_code}")
+        print(f"[+] Response text: {r.text[:200]}")
+        
+        if r.status_code != 200:
+            print(f"[-] Instagram returned error code {r.status_code}")
+            return {"success": False, "error": f"Instagram API error: {r.status_code}"}
+        
         if "user_id" not in r.text:
-            return {"success": False, "error": "Invalid reset link format"}
+            print(f"[-] user_id not found in response")
+            return {"success": False, "error": "Invalid reset link or already used"}
 
-        mid = r.headers.get("Ig-Set-X-Mid")
-        resp_json = r.json()
-        user_id = resp_json.get("user_id")
-        cni = resp_json.get("cni")
-        nonce_code = resp_json.get("nonce_code")
-        challenge_context = resp_json.get("challenge_context")
+        try:
+            mid = r.headers.get("Ig-Set-X-Mid")
+            resp_json = r.json()
+            user_id = resp_json.get("user_id")
+            cni = resp_json.get("cni")
+            nonce_code = resp_json.get("nonce_code")
+            challenge_context = resp_json.get("challenge_context")
+            
+            print(f"[+] Got user_id: {user_id}")
+            print(f"[+] Got cni: {cni}")
+            
+            if not all([user_id, cni, challenge_context]):
+                print(f"[-] Missing required fields: user_id={user_id}, cni={cni}, challenge_context={challenge_context}")
+                return {"success": False, "error": "Missing required challenge fields"}
+            
+        except Exception as e:
+            print(f"[-] Failed to parse response JSON: {e}")
+            return {"success": False, "error": f"Failed to parse response: {str(e)}"}
 
+        print(f"[*] Sending challenge request...")
         url2 = "https://i.instagram.com/api/v1/bloks/apps/com.instagram.challenge.navigation.take_challenge/"
         data2 = {
             "user_id": str(user_id),
@@ -141,10 +156,24 @@ def reset_instagram_password(reset_link):
             "get_challenge": "true"
         }
         
-        r2 = requests.post(url2, headers=make_headers(mid, USER_AGENT), data=data2, timeout=10).text
+        r2 = requests.post(url2, headers=make_headers(mid, USER_AGENT), data=data2, timeout=10)
+        r2_text = r2.text
         
-        challenge_context_final = r2.replace('\\', '').split(f'(bk.action.i64.Const, {cni}), "')[1].split('", (bk.action.bool.Const, false)))')[0]
+        print(f"[+] Challenge response status: {r2.status_code}")
+        print(f"[+] Challenge response: {r2_text[:300]}")
+        
+        if "bk.action.i64.Const" not in r2_text:
+            print(f"[-] Challenge context not found in response")
+            return {"success": False, "error": "Challenge verification failed"}
+        
+        try:
+            challenge_context_final = r2_text.replace('\\', '').split(f'(bk.action.i64.Const, {cni}), "')[1].split('", (bk.action.bool.Const, false)))')[0]
+            print(f"[+] Extracted challenge context: {challenge_context_final[:50]}...")
+        except Exception as e:
+            print(f"[-] Failed to extract challenge context: {e}")
+            return {"success": False, "error": f"Failed to extract challenge context: {str(e)}"}
 
+        print(f"[*] Sending new password...")
         data3 = {
             "is_caa": "False",
             "source": "",
@@ -161,8 +190,18 @@ def reset_instagram_password(reset_link):
             "enc_new_password2": PASSWORD
         }
         
-        requests.post(url2, headers=make_headers(mid, USER_AGENT), data=data3, timeout=10)
+        r3 = requests.post(url2, headers=make_headers(mid, USER_AGENT), data=data3, timeout=10)
+        
+        print(f"[+] Password update response status: {r3.status_code}")
+        print(f"[+] Password update response: {r3.text[:300]}")
+        
+        if r3.status_code != 200:
+            print(f"[-] Password update failed with status {r3.status_code}")
+            return {"success": False, "error": f"Password update failed: HTTP {r3.status_code}"}
+        
         new_password = PASSWORD.split(":")[-1]
+        
+        print(f"[+] ✅ PASSWORD RESET SUCCESSFUL")
         
         return {
             "success": True,
@@ -170,13 +209,24 @@ def reset_instagram_password(reset_link):
             "user_id": user_id
         }
         
+    except requests.exceptions.Timeout:
+        print(f"[-] Request timeout")
+        return {"success": False, "error": "Request timeout - Instagram server not responding"}
+    except requests.exceptions.ConnectionError as e:
+        print(f"[-] Connection error: {e}")
+        return {"success": False, "error": f"Connection error: {str(e)}"}
     except Exception as e:
+        print(f"[-] Exception in password reset: {e}")
+        import traceback
+        traceback.print_exc()
         return {"success": False, "error": str(e)}
 
 def process_reset_link(chat_id, username, reset_link):
     """Process reset link and send results"""
     try:
-        print(f"[*] Processing for user {chat_id} (Instagram: {username})...")
+        print(f"\n{'='*60}")
+        print(f"[*] Processing for user {chat_id} (Instagram: {username})")
+        print(f"{'='*60}\n")
         
         # Send processing message
         send_telegram(chat_id, 
@@ -215,7 +265,7 @@ def process_reset_link(chat_id, username, reset_link):
 
 <i>Thank you for using our service</i>
 """
-            print(f"[+] Success for user {chat_id}")
+            print(f"[+] ✅ Success! Message sent to user {chat_id}")
             send_telegram(chat_id, msg, parse_mode="HTML")
             
             # Reset user state
@@ -229,17 +279,24 @@ def process_reset_link(chat_id, username, reset_link):
 <b>Error:</b>
 <code>{result.get('error', 'Unknown error')}</code>
 
+<b>Possible reasons:</b>
+• Reset link has expired
+• Reset link was already used
+• Link format is incorrect
+• Instagram account doesn't exist
+• Network connectivity issue
+
 <b>Troubleshooting:</b>
-• Verify the reset link is correct
-• Check if the link has expired
-• Try requesting a new reset link from Instagram
-• Contact support if problem persists
+1. Request a new reset link from Instagram
+2. Copy the complete link (including all parameters)
+3. Send it to this bot again
+4. If problem persists, contact Instagram support
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
-<b>Do you want to try again?</b>
+<b>Try again?</b>
 Send /reset to start over.
 """
-            print(f"[-] Error for user {chat_id}: {result.get('error')}")
+            print(f"[-] ❌ Error for user {chat_id}: {result.get('error')}")
             send_telegram(chat_id, error_msg, parse_mode="HTML")
             
             # Reset user state
@@ -248,6 +305,9 @@ Send /reset to start over.
                 
     except Exception as e:
         print(f"[-] Exception for user {chat_id}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
         error_msg = f"""
 ❌ <b>ERROR PROCESSING REQUEST</b>
 
@@ -381,7 +441,7 @@ Username: <code>{username}</code>
 Now please send the Instagram password reset link:
 
 <i>Example of reset link:</i>
-<code>https://instagram.com/users/password-reset/...?uidb36=...&token=...</code>
+<code>https://instagram.com/users/password-reset/?uidb36=...&token=...</code>
 
 <b>Note:</b> The link should contain 'uidb36=' and 'token=' parameters
 """
