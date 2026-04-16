@@ -323,5 +323,8 @@ if __name__ == '__main__':
     print(">>> Starting Lyrox Bot Service...")
     print(">>> Flask Keep-Alive Server Active on Port 10000")
     
-    # infinity_polling automatically handles reconnects
+    # 1. Delete any old webhooks so polling can work
+    bot.remove_webhook()
+    
+    # 2. Start receiving messages
     bot.infinity_polling()
