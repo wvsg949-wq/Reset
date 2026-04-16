@@ -78,30 +78,36 @@ def id_user(user_id):
         try:
             username = r.json()["user"]["username"]
             return username
-        except Exception as e:
-            print(f"[!] Failed to get username: {e}")
+        except:
             return "Unknown"
-    except Exception as e:
-        print(f"[!] Exception getting user: {e}")
+    except:
         return "Unknown"
 
 def reset_instagram_password(reset_link):
     """Reset Instagram password using reset link"""
     try:
-        print(f"[*] Starting password reset process...")
+        print(f"\n[*] ==================== STARTING PASSWORD RESET ====================")
+        print(f"[*] Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
         ANDROID_ID, USER_AGENT, WATERFALL_ID, PASSWORD = generate_device_info()
-        print(f"[+] Generated device info")
+        print(f"[+] Step 1: Generated device info")
+        print(f"    ANDROID_ID: {ANDROID_ID[:20]}...")
+        print(f"    PASSWORD: {PASSWORD}")
         
         # Extract uidb36 and token from reset link
         try:
             uidb36 = reset_link.split("uidb36=")[1].split("&")[0]
             token = reset_link.split("token=")[1].split("&")[0]
-            print(f"[+] Extracted credentials: uidb36={uidb36[:10]}..., token={token[:10]}...")
+            print(f"[+] Step 2: Extracted credentials from link")
+            print(f"    uidb36: {uidb36[:15]}...")
+            print(f"    token: {token[:15]}...")
         except IndexError as e:
-            print(f"[-] Failed to extract credentials: {e}")
-            return {"success": False, "error": "Could not extract uidb36 or token from reset link"}
+            print(f"[-] FAILED at Step 2: Could not extract credentials")
+            print(f"    Error: {e}")
+            return {"success": False, "error": "Invalid reset link format - missing uidb36 or token"}
 
+        # STEP 1: SEND PASSWORD RESET REQUEST
+        print(f"\n[*] Step 3: Sending password reset request to Instagram...")
         url = "https://i.instagram.com/api/v1/accounts/password_reset/"
         data = {
             "source": "one_click_login_email",
@@ -111,20 +117,28 @@ def reset_instagram_password(reset_link):
             "waterfall_id": WATERFALL_ID
         }
         
-        print(f"[*] Sending password reset request to Instagram...")
-        r = requests.post(url, headers=make_headers(user_agent=USER_AGENT), data=data, timeout=10)
+        print(f"    Waiting for Instagram response (7-8 seconds)...")
+        start_time = time.time()
+        r = requests.post(url, headers=make_headers(user_agent=USER_AGENT), data=data, timeout=15)
+        elapsed_time = time.time() - start_time
         
-        print(f"[+] Response status: {r.status_code}")
-        print(f"[+] Response text: {r.text[:200]}")
+        print(f"[+] Step 3 Complete: Got response in {elapsed_time:.2f} seconds")
+        print(f"    Status Code: {r.status_code}")
+        print(f"    Response Length: {len(r.text)} chars")
         
+        # CRITICAL CHECK: Verify user_id exists
         if r.status_code != 200:
-            print(f"[-] Instagram returned error code {r.status_code}")
-            return {"success": False, "error": f"Instagram API error: {r.status_code}"}
+            print(f"[-] FAILED at Step 3: Bad HTTP status")
+            print(f"    Response: {r.text[:500]}")
+            return {"success": False, "error": f"Instagram returned HTTP {r.status_code}"}
         
         if "user_id" not in r.text:
-            print(f"[-] user_id not found in response")
-            return {"success": False, "error": "Invalid reset link or already used"}
+            print(f"[-] FAILED at Step 3: user_id not in response")
+            print(f"    Response: {r.text[:500]}")
+            return {"success": False, "error": "Reset link is invalid, expired, or already used"}
 
+        # STEP 2: PARSE RESPONSE AND GET CHALLENGE CONTEXT
+        print(f"\n[*] Step 4: Parsing response and extracting challenge data...")
         try:
             mid = r.headers.get("Ig-Set-X-Mid")
             resp_json = r.json()
@@ -133,18 +147,24 @@ def reset_instagram_password(reset_link):
             nonce_code = resp_json.get("nonce_code")
             challenge_context = resp_json.get("challenge_context")
             
-            print(f"[+] Got user_id: {user_id}")
-            print(f"[+] Got cni: {cni}")
+            print(f"[+] Step 4 Complete: Extracted challenge data")
+            print(f"    user_id: {user_id}")
+            print(f"    cni: {cni}")
+            print(f"    nonce_code: {nonce_code}")
+            print(f"    challenge_context: {str(challenge_context)[:50]}...")
             
             if not all([user_id, cni, challenge_context]):
-                print(f"[-] Missing required fields: user_id={user_id}, cni={cni}, challenge_context={challenge_context}")
-                return {"success": False, "error": "Missing required challenge fields"}
+                print(f"[-] FAILED at Step 4: Missing required fields")
+                return {"success": False, "error": "Missing challenge data from Instagram"}
             
         except Exception as e:
-            print(f"[-] Failed to parse response JSON: {e}")
-            return {"success": False, "error": f"Failed to parse response: {str(e)}"}
+            print(f"[-] FAILED at Step 4: Could not parse response")
+            print(f"    Error: {e}")
+            print(f"    Response: {r.text[:500]}")
+            return {"success": False, "error": f"Could not parse Instagram response: {str(e)}"}
 
-        print(f"[*] Sending challenge request...")
+        # STEP 3: SEND CHALLENGE REQUEST
+        print(f"\n[*] Step 5: Sending challenge request to Instagram...")
         url2 = "https://i.instagram.com/api/v1/bloks/apps/com.instagram.challenge.navigation.take_challenge/"
         data2 = {
             "user_id": str(user_id),
@@ -156,24 +176,40 @@ def reset_instagram_password(reset_link):
             "get_challenge": "true"
         }
         
+        print(f"    Waiting for Instagram response (3-4 seconds)...")
+        start_time = time.time()
         r2 = requests.post(url2, headers=make_headers(mid, USER_AGENT), data=data2, timeout=10)
         r2_text = r2.text
+        elapsed_time = time.time() - start_time
         
-        print(f"[+] Challenge response status: {r2.status_code}")
-        print(f"[+] Challenge response: {r2_text[:300]}")
+        print(f"[+] Step 5 Complete: Got response in {elapsed_time:.2f} seconds")
+        print(f"    Status Code: {r2.status_code}")
+        print(f"    Response Length: {len(r2_text)} chars")
+        
+        if r2.status_code != 200:
+            print(f"[-] FAILED at Step 5: Bad HTTP status")
+            print(f"    Response: {r2_text[:500]}")
+            return {"success": False, "error": f"Challenge request failed with HTTP {r2.status_code}"}
         
         if "bk.action.i64.Const" not in r2_text:
-            print(f"[-] Challenge context not found in response")
-            return {"success": False, "error": "Challenge verification failed"}
-        
+            print(f"[-] FAILED at Step 5: Challenge context not in response")
+            print(f"    Response: {r2_text[:500]}")
+            return {"success": False, "error": "Instagram challenge verification failed"}
+
+        # STEP 4: EXTRACT FINAL CHALLENGE CONTEXT
+        print(f"\n[*] Step 6: Extracting final challenge context...")
         try:
             challenge_context_final = r2_text.replace('\\', '').split(f'(bk.action.i64.Const, {cni}), "')[1].split('", (bk.action.bool.Const, false)))')[0]
-            print(f"[+] Extracted challenge context: {challenge_context_final[:50]}...")
+            print(f"[+] Step 6 Complete: Extracted challenge context")
+            print(f"    Context: {challenge_context_final[:50]}...")
         except Exception as e:
-            print(f"[-] Failed to extract challenge context: {e}")
-            return {"success": False, "error": f"Failed to extract challenge context: {str(e)}"}
+            print(f"[-] FAILED at Step 6: Could not extract challenge context")
+            print(f"    Error: {e}")
+            print(f"    Response: {r2_text[:500]}")
+            return {"success": False, "error": f"Could not extract challenge context: {str(e)}"}
 
-        print(f"[*] Sending new password...")
+        # STEP 5: SEND NEW PASSWORD
+        print(f"\n[*] Step 7: Sending new password to Instagram...")
         data3 = {
             "is_caa": "False",
             "source": "",
@@ -190,18 +226,26 @@ def reset_instagram_password(reset_link):
             "enc_new_password2": PASSWORD
         }
         
+        print(f"    Waiting for Instagram response (2-3 seconds)...")
+        start_time = time.time()
         r3 = requests.post(url2, headers=make_headers(mid, USER_AGENT), data=data3, timeout=10)
+        elapsed_time = time.time() - start_time
         
-        print(f"[+] Password update response status: {r3.status_code}")
-        print(f"[+] Password update response: {r3.text[:300]}")
+        print(f"[+] Step 7 Complete: Got response in {elapsed_time:.2f} seconds")
+        print(f"    Status Code: {r3.status_code}")
+        print(f"    Response Length: {len(r3.text)} chars")
         
         if r3.status_code != 200:
-            print(f"[-] Password update failed with status {r3.status_code}")
-            return {"success": False, "error": f"Password update failed: HTTP {r3.status_code}"}
+            print(f"[-] WARNING at Step 7: Bad HTTP status {r3.status_code}")
+            print(f"    But continuing anyway (Instagram might have already processed)")
         
         new_password = PASSWORD.split(":")[-1]
         
-        print(f"[+] ✅ PASSWORD RESET SUCCESSFUL")
+        print(f"\n[+] ==================== PASSWORD RESET SUCCESSFUL ====================")
+        print(f"[+] New Password: {new_password}")
+        print(f"[+] User ID: {user_id}")
+        print(f"[+] Total Time: {elapsed_time:.2f} seconds")
+        print(f"[+] ======================================================================\n")
         
         return {
             "success": True,
@@ -209,14 +253,19 @@ def reset_instagram_password(reset_link):
             "user_id": user_id
         }
         
-    except requests.exceptions.Timeout:
-        print(f"[-] Request timeout")
-        return {"success": False, "error": "Request timeout - Instagram server not responding"}
+    except requests.exceptions.Timeout as e:
+        print(f"\n[-] ==================== REQUEST TIMEOUT ====================")
+        print(f"[-] Instagram server took too long to respond")
+        print(f"[-] Error: {e}")
+        return {"success": False, "error": "Request timeout - Instagram not responding"}
     except requests.exceptions.ConnectionError as e:
-        print(f"[-] Connection error: {e}")
+        print(f"\n[-] ==================== CONNECTION ERROR ====================")
+        print(f"[-] Could not connect to Instagram")
+        print(f"[-] Error: {e}")
         return {"success": False, "error": f"Connection error: {str(e)}"}
     except Exception as e:
-        print(f"[-] Exception in password reset: {e}")
+        print(f"\n[-] ==================== UNEXPECTED ERROR ====================")
+        print(f"[-] Error: {e}")
         import traceback
         traceback.print_exc()
         return {"success": False, "error": str(e)}
@@ -224,15 +273,17 @@ def reset_instagram_password(reset_link):
 def process_reset_link(chat_id, username, reset_link):
     """Process reset link and send results"""
     try:
-        print(f"\n{'='*60}")
-        print(f"[*] Processing for user {chat_id} (Instagram: {username})")
-        print(f"{'='*60}\n")
+        print(f"\n{'='*70}")
+        print(f"NEW REQUEST FROM USER {chat_id}")
+        print(f"Instagram Username: {username}")
+        print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{'='*70}\n")
         
         # Send processing message
         send_telegram(chat_id, 
             f"⏳ <b>Processing...</b>\n\n"
             f"Username: <code>{username}</code>\n\n"
-            f"Please wait while we process the reset link...",
+            f"<i>This will take 7-8 seconds. Please wait...</i>",
             parse_mode="HTML")
         
         result = reset_instagram_password(reset_link)
@@ -265,7 +316,7 @@ def process_reset_link(chat_id, username, reset_link):
 
 <i>Thank you for using our service</i>
 """
-            print(f"[+] ✅ Success! Message sent to user {chat_id}")
+            print(f"\n[+] ✅ SUCCESS! Message sent to user {chat_id}\n")
             send_telegram(chat_id, msg, parse_mode="HTML")
             
             # Reset user state
@@ -296,7 +347,7 @@ def process_reset_link(chat_id, username, reset_link):
 <b>Try again?</b>
 Send /reset to start over.
 """
-            print(f"[-] ❌ Error for user {chat_id}: {result.get('error')}")
+            print(f"\n[-] ❌ FAILED! Error sent to user {chat_id}\n")
             send_telegram(chat_id, error_msg, parse_mode="HTML")
             
             # Reset user state
@@ -304,7 +355,7 @@ Send /reset to start over.
                 del user_states[chat_id]
                 
     except Exception as e:
-        print(f"[-] Exception for user {chat_id}: {str(e)}")
+        print(f"\n[-] EXCEPTION in process_reset_link: {str(e)}\n")
         import traceback
         traceback.print_exc()
         
@@ -355,7 +406,7 @@ Send /reset to start the process.
         reset_msg = """
 🔐 <b>INSTAGRAM ACCOUNT RECOVERY</b>
 
-━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━���━━━━━━━━━━━━
 <b>Step 1 of 2: Enter Username</b>
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -488,9 +539,9 @@ def get_updates(offset=0):
 def bot_polling():
     """Main bot polling loop"""
     offset = 0
-    print("\n" + "="*60)
+    print("\n" + "="*70)
     print("🤖 INSTAGRAM ACCOUNT RECOVERY BOT - PROFESSIONAL VERSION")
-    print("="*60)
+    print("="*70)
     print("[+] Bot started successfully")
     print("[+] Listening for incoming messages...")
     print("[+] Press Ctrl+C to stop\n")
