@@ -2,3 +2,4 @@ requests
 python-dotenv
 cfonts
 bs4
+user_agent
