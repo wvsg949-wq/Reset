@@ -49,8 +49,8 @@ keep_alive_thread.start()
 # 2. BOT CONFIGURATION
 # ==========================================
 
-# Replace hardcoded tokens with Environment Variable
-TOKEN = os.getenv('BOT_TOKEN')
+# Hardcoding the token to bypass the Railway variable error
+TOKEN = "8467513290:AAGByhKPJ9ToRxkiJVVey4LnSK9AoBfZGEs"
 bot = telebot.TeleBot(TOKEN)
 
 # ==========================================
