@@ -1,9 +1,7 @@
-pyTelegramBotAPI
-flask
-httpx[http2]
-h2
 requests
-user_agent
-beautifulsoup4
+pyfiglet
+rich
 cfonts
-colorama
+python-dotenv
+user-agent
+beautifulsoup4
